@@ -1,0 +1,34 @@
+# Ignorer les fichiers .env, log et json
+.env
+*.log
+*.json
+*.zip
+
+# Virtual Environment
+venv/
+ENV/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Ignorer le dossier __pycache__
+__pycache__/
+
+# Ignorer tous les fichiers dans le dossier data, sauf les fichiers gitkeep, et conserver la structure
+data/*
+# Ne pas ignorer les sous-dossiers
+!data*/
+# Ne pas ignorer les fichiers .gitkeep pour conserver la structure
+!data/**/.gitkeep
+
+# Ignorer tous les fichiers dans le dossier log, sauf les fichiers gitkeep, et conserver la structure
+log/*
+# Ne pas ignorer les sous-dossiers
+!log*/
+# Ne pas ignorer les fichiers .gitkeep pour conserver la structure
+!log/**/.gitkeep
+
