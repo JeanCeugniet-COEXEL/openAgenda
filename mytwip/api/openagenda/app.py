@@ -12,6 +12,7 @@ async def lifespan(app: FastAPI):
     """Handle application lifespan events"""
     global logger
     # Startup
+    openagenda_cached_query_cleanup()
     logger = logger_init()
     logger.info("Parsing API starting up")
 
@@ -39,9 +40,10 @@ async def root(request: Request, api_key: str = Depends(rate_limit)):
 @app.get("/agendas/search/{search_term}")
 async def agendas_search(request: Request, api_key: str = Depends(rate_limit), search_term: str = ""):
     """
-    Search for OpenAgenda agendas by search term
+    Search for OpenAgenda agendas by search term.
     """
     result = {"status": "unknown", "msg": "Unkown status"}
+    search_term = search_term.strip()
     result = core.agendas_search(search_term)
         
     return result
@@ -52,6 +54,7 @@ async def agendas_by_slug(request: Request, api_key: str = Depends(rate_limit), 
     Search for OpenAgenda agendas by slug
     """
     result = {"status": "unknown", "msg": "Unkown status"}
+    agenda_slug = agenda_slug.strip()
     result = core.agendas_by_slug(agenda_slug)
         
     return result
@@ -74,5 +77,14 @@ async def events_by_agenda_uid(request: Request, api_key: str = Depends(rate_lim
     result = {"status": "unknown", "msg": "Unkown status"}
     result = core.events_by_agenda_uid(agenda_uid)
         
+    return result
+
+@app.get("/cache_query_cleanup")
+async def cache_query_cleanup(request: Request, api_key: str = Depends(rate_limit), force: bool = False):
+    """
+    Cleanup or reset query cache
+    """
+    result = openagenda_cached_query_cleanup(force)
+
     return result
 

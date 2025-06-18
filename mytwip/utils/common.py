@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from time import perf_counter 
 import json, os, uuid, math
 
@@ -69,12 +69,19 @@ def array_chunk(arr, chunk_size):
 
 def get_current_utc_datetime():
     current_utc_time = datetime.now(timezone.utc)
-    formatted_utc_time = current_utc_time.strftime('%Y-%m-%d %H:%M:%S %z')
+    formatted_utc_time = current_utc_time.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
 
     return formatted_utc_time
 
 def format_datetime(obj):
     return str(obj)
+
+def datetime_delta(test_datetime: str):
+    test_datetime = datetime.strptime(test_datetime, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
+    now = datetime.now(timezone.utc)
+    delta_seconds = (now - test_datetime).total_seconds()
+
+    return delta_seconds
 
 def log_queries(log_file, queries_list):
     existing_list = []

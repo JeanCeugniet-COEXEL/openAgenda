@@ -5,6 +5,12 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
+    "datetime>=5.5",
+    "dotenv>=0.9.9",
     "fastapi>=0.115.12",
+    "logging>=0.4.9.6",
+    "pathlib>=1.0.1",
+    "requests>=2.32.4",
+    "uuid>=1.30",
     "uvicorn>=0.33.0",
 ]

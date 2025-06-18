@@ -9,6 +9,7 @@ import urllib.parse
 import requests
 import time
 import copy
+import hashlib
 
 openagenda_last_access = None
 """
@@ -16,40 +17,43 @@ Core utilities for OpenAgenda API
 """
 # Query to openAgenda API
 def openagenda_query(query_url: str, data_type="items", headers: dict = {"Accept": "application/json"}) -> dict:
-    global openagenda_last_access
-    if openagenda_last_access is not None:
-        if (timestamp() - openagenda_last_access) < 1:
-            logger.warning("OpenAgenda API rate limit reached, waiting for 1 second")
-            time.sleep(1)
-
+    logger.info("query to platform")
     result = {"status": "unknown", "msg": "Unkown status"}
-    logger.info(f"Executing OpenAgenda query: {query_url}")
-    try:
-        response = requests.get(query_url, headers=headers)
-        logger.info("response : %s", response.json())
-        if response.status_code == 404:
-            logger.warning("Query %s returned empty set %s : %s", query_url, response.status_code, response.text)
-            result = {"status": "success", "msg": "OpenAgenda query successful", "data": {data_type: [], "total":0}}
-        elif response.status_code != 200:
-            logger.warning("Query %s returned error %s : %s", query_url, response.status_code, response.text)
-            result = {"status": "error", "msg": "Error during OpenAgenda query", "data": response.json()}
-        else:
-            logger.info("response 200")
-            result = {"status": "success", "msg": f"OpenAgenda query successful", "data": response.json()}
-    except Exception as e:
-        logger.error("Error during OpenAgenda query %s : %s", query_url, e)
-        result = {"status": "error", "msg": f"Error during OpenAgenda query: {str(e)}"}
+    query_result_data = openagenda_cached_query_load(query_url)
+    if query_result_data:
+        logger.info("query was cached")
+        result = {"status": "success", "msg": f"OpenAgenda query successful", "data": query_result_data, "from_cache": True}
+    else:
+        global openagenda_last_access
+        if openagenda_last_access is not None:
+            if (timestamp() - openagenda_last_access) < OPENAGENDA_SPEED_LIMIT:
+                logger.warning("OpenAgenda API rate limit reached, waiting for 1 second")
+                time.sleep(1)
+
+        try:
+            response = requests.get(query_url, headers=headers)
+            if response.status_code == 404:
+                logger.warning("Query %s returned empty set %s : %s", query_url, response.status_code, response.text)
+                result = {"status": "success", "msg": "OpenAgenda query successful", "data": {data_type: [], "total":0}, "from_cache": False}
+            elif response.status_code != 200:
+                logger.warning("Query %s returned error %s : %s", query_url, response.status_code, response.text)
+                result = {"status": "error", "msg": "Error during OpenAgenda query", "data": response.json(), "from_cache": False}
+            else:
+                query_result_data = response.json()
+                result = {"status": "success", "msg": f"OpenAgenda query successful", "data": query_result_data, "from_cache": False}
+                openagenda_cached_query_store(query_url, query_result_data)
+        except Exception as e:
+            logger.error("Error during OpenAgenda query %s : %s", query_url, e)
+            result = {"status": "error", "msg": f"Error during OpenAgenda query: {str(e)}"}
 
     if data_type not in result["data"] and "uid" in result["data"]:
         result["data"] = {data_type: [result["data"]], "total": 1}
-    logger.info("result : %s", result)
 
     result_to_log = copy.deepcopy(result)
     if result_to_log["data"].get("agendas"):
         result_to_log["data"]["agendas"] = f"{len(result_to_log["data"]["agendas"])} items"
     if result_to_log["data"].get("events"):
         result_to_log["data"]["events"] = f"{len(result_to_log["data"]["events"])} items"
-    logger.info("query result data : %s", result_to_log["data"])
 
     openagenda_last_access = timestamp()
     return result
@@ -94,6 +98,51 @@ def openagenda_paginate(data: dict, query_url: str, data_type: str = "items")->d
 
     return result
 
+# Get cached query result if exists and recent
+def openagenda_cached_query_load(query_url):
+    result = None
+    md5_hash = hashlib.md5(query_url.encode('utf-8')).hexdigest()
+    file_path = f"{QUERIES_FOLDER}/{md5_hash}.json"
+    if os.path.exists(file_path):
+        last_modified = os.path.getmtime(file_path)
+        if time.time() - last_modified < QUERIES_CACHING_DURATION:
+            with open(file_path, "r") as file_in:
+                result = json.load(file_in)
+                
+    return result
+
+def openagenda_cached_query_store(query_url, query_result):
+    result = False
+    md5_hash = hashlib.md5(query_url.encode('utf-8')).hexdigest()
+    file_path = f"{QUERIES_FOLDER}/{md5_hash}.json"
+    try:
+        with open(file_path, "w") as file_out:
+            file_out.write(json.dumps(query_result))
+        result = True
+    except Exception as e:
+        logger.error("Error during query caching : %s", str(e))
+                
+    return result
+
+def openagenda_cached_query_cleanup(force = False):
+    result = True
+    filenames = [f"{QUERIES_FOLDER}/{filename}" for filename in os.listdir(QUERIES_FOLDER) if os.path.isfile(f"{QUERIES_FOLDER}/{filename}")]
+    if not force:
+        now = time.time()
+        filenames = [filename for filename in filenames if now - os.path.getmtime(filename) > QUERIES_CACHING_DURATION]
+    for filename in filenames:
+        try:
+            os.remove(filename)
+        except:
+            result = False
+
+    result = {
+        "cache_cleanup": result,
+        "force": force
+    }
+
+    return result
+
 # AGENDAS >>
 # Search agendas by search term
 def agendas_search(search_term: str) -> dict:
@@ -102,22 +151,28 @@ def agendas_search(search_term: str) -> dict:
     """
     result = {"status": "unknown", "msg": "Unkown status"}
     agendas = []
-    # Placeholder for actual search logic
-    logger.info(f"Searching for agendas with term: {search_term}")
-    query_url = URL_TPL_AGENDAS_SEARCH.replace("[[search_term]]", urllib.parse.quote(search_term))
-    query_result = openagenda_query(query_url, "agendas")
-    if query_result["status"] == "success":
-        query_result["data"] = openagenda_paginate(query_result["data"], query_url, "agendas")
-        agendas = query_result["data"].get("agendas", [])
+    if not search_term:
         result = {
-            "status": "success",
-            "msg": f"Found {query_result["data"].get("total", 0)} agendas for search term '{search_term}'",
-            "data": query_result["data"]
+            "status": "failure",
+            "msg" : "No search term provided",
+            "data": []
         }
     else:
-        result = query_result
+        # Placeholder for actual search logic
+        query_url = URL_TPL_AGENDAS_SEARCH.replace("[[search_term]]", urllib.parse.quote(search_term))
+        query_result = openagenda_query(query_url, "agendas")
+        if query_result["status"] == "success":
+            query_result["data"] = openagenda_paginate(query_result["data"], query_url, "agendas")
+            agendas = query_result["data"].get("agendas", [])
+            agendas_update(agendas)
+            result = {
+                "status": "success",
+                "msg": f"Found {query_result["data"].get("total", 0)} agendas for search term '{search_term}'",
+                "data": query_result["data"]
+            }
+        else:
+            result = query_result
 
-    agendas_update(agendas)
 
     return result
 
@@ -129,23 +184,28 @@ def agendas_by_slug(search_slug: str) -> dict:
     result = {"status": "unknown", "msg": "Unkown status"}
     agendas = []
     agenda = None
-    # Placeholder for actual search logic
-    logger.info(f"Searching for agendas with slug: {search_slug}")
-    query_url = URL_TPL_AGENDAS_BY_SLUG.replace("[[search_slug]]", urllib.parse.quote(str(search_slug)))
-    query_result = openagenda_query(query_url, "agendas")
-    logger.info("query_result", query_result)
-    if query_result["status"] == "success":
-        query_result["data"] = openagenda_paginate(query_result["data"], query_url, "agendas")
-        agendas = query_result["data"].get("agendas", [])
+    if not search_slug:
         result = {
-            "status": "success",
-            "msg": f"Found {len(agendas)} agendas for search slug '{search_slug}'",
-            "data": query_result["data"]
+            "status": "failure",
+            "msg" : "No agenda slug provided",
+            "data": []
         }
     else:
-        result = query_result
+        # Placeholder for actual search logic
+        query_url = URL_TPL_AGENDAS_BY_SLUG.replace("[[search_slug]]", urllib.parse.quote(str(search_slug)))
+        query_result = openagenda_query(query_url, "agendas")
+        if query_result["status"] == "success":
+            query_result["data"] = openagenda_paginate(query_result["data"], query_url, "agendas")
+            agendas = query_result["data"].get("agendas", [])
+            agendas_update(agendas)
+            result = {
+                "status": "success",
+                "msg": f"Found {len(agendas)} agendas for search slug '{search_slug}'",
+                "data": query_result["data"]
+            }
+        else:
+            result = query_result
 
-    agendas_update(agendas)
 
     return result
 
@@ -157,14 +217,33 @@ def agendas_details(agenda_uid: int) -> dict:
     result = {"status": "unknown", "msg": "Unkown status"}
     agendas = []
     agenda = None
-    # Placeholder for actual search logic
-    logger.info(f"Searching for agendas with uid: {agenda_uid}")
-    query_url = URL_TPL_AGENDAS_DETAILS.replace("[[agenda_uid]]", urllib.parse.quote(str(agenda_uid)))
-    query_result = openagenda_query(query_url, "agendas")
-    logger.info("query_result : %s", query_result)
-    if query_result["status"] == "success":
-        agendas = query_result.get("data", {}).get("agendas", [])
-        agenda = agendas[0] if len(agendas) else None
+    agenda_cached = False
+    cached_delta = None
+    # Is agenda recently cached ?
+    agendas = agendas_load()
+    agendas = [agenda for agenda in agendas if agenda.get("uid") == agenda_uid]
+    if len(agendas) > 0:
+        agenda = agendas[0]
+        if "cachedAt" in agenda:
+            cached_delta = datetime_delta(agenda["cachedAt"])
+            agenda_cached = (cached_delta < AGENDAS_CACHING_DURATION)
+
+    if not agenda_cached:
+        agenda = None
+        query_url = URL_TPL_AGENDAS_DETAILS.replace("[[agenda_uid]]", urllib.parse.quote(str(agenda_uid)))
+        query_result = openagenda_query(query_url, "agendas")
+        if query_result["status"] == "success":
+            agendas = query_result.get("data", {}).get("agendas", [])
+            if len(agendas):
+                agendas[0]["cachedAt"] = get_current_utc_datetime()
+                agenda = agendas[0]
+                agendas_update(agendas)
+            else:
+                agenda = None
+        else:
+            result = query_result
+
+    if agenda is not None:
         msg = f"Found agenda for uid '{agenda_uid}'" if agenda is not None else f"Found no agenda for uid '{agenda_uid}'"
         result = {
             "status": "success",
@@ -173,10 +252,6 @@ def agendas_details(agenda_uid: int) -> dict:
                 "agenda": agenda,
             }
         }
-    else:
-        result = query_result
-
-    agendas_update(agendas)
 
     return result
 
@@ -229,23 +304,39 @@ def events_by_agenda_uid(agenda_uid: int) -> dict:
     Search for OpenAgenda events by agenda uid
     """
     result = {"status": "unknown", "msg": "Unkown status"}
-    events = []
-    # Placeholder for actual search logic
-    logger.info(f"Searching for events by agenda uid : {agenda_uid}")
-    query_url = URL_TPL_EVENTS_BY_AGENDA_UID.replace("[[agenda_uid]]", urllib.parse.quote(str(agenda_uid)))
-    query_result = openagenda_query(query_url, "events")
-    if query_result["status"] == "success":
-        query_result["data"] = openagenda_paginate(query_result["data"], query_url, "events")
-        events = query_result["data"].get("events", [])
+    events = None
+    # Caching
+    events_store_path = EVENTS_STORE_TPL.replace("[[agenda_uid]]", urllib.parse.quote(str(agenda_uid)))
+    last_modified = os.path.getmtime(events_store_path) if os.path.exists(events_store_path) else 0
+    now = time.time()
+    if now - last_modified < EVENTS_CACHING_DURATION:
+        events = events_load(agenda_uid)
+        logger.info("events are cached")
+    else:
+        # Placeholder for actual search logic
+        query_url = URL_TPL_EVENTS_BY_AGENDA_UID.replace("[[agenda_uid]]", urllib.parse.quote(str(agenda_uid)))
+        query_result = openagenda_query(query_url, "events")
+        if query_result["status"] == "success":
+            query_result["data"] = openagenda_paginate(query_result["data"], query_url, "events")
+            events = query_result["data"].get("events", [])
+            events_update(agenda_uid, events)
+        else:
+            result = query_result
+    if isinstance(events, list):
+        total = len(events)
+        pages = total // OPENAGENDA_QUERY_SIZE
+        if total % OPENAGENDA_QUERY_SIZE > 0:
+            pages+= 1
         result = {
             "status": "success",
-            "msg": f"Found {query_result["data"].get("total", 0)} events for agenda uid '{agenda_uid}'",
-            "data": query_result["data"]
+            "msg": f"Found {len(events)} events for agenda uid '{agenda_uid}'",
+            "data": {
+                "events": events,
+                "total": total,
+                "pages": pages
+            }
         }
-    else:
-        result = query_result
 
-    events_update(agenda_uid, events)
 
     return result
 
