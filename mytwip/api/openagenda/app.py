@@ -41,6 +41,7 @@ async def root(request: Request, api_key: str = Depends(rate_limit)):
 async def agendas_search(request: Request, api_key: str = Depends(rate_limit), search_term: str = ""):
     """
     Search for OpenAgenda agendas by search term.
+    - **search_term**: Search term. WARNING : OpenAgenda platform is apparently case sensitive.
     """
     result = {"status": "unknown", "msg": "Unkown status"}
     search_term = search_term.strip()
@@ -52,6 +53,7 @@ async def agendas_search(request: Request, api_key: str = Depends(rate_limit), s
 async def agendas_by_slug(request: Request, api_key: str = Depends(rate_limit), agenda_slug: str = ""):
     """
     Search for OpenAgenda agendas by slug
+    - **agenda_slug**: The slug of this agenda on the OpenAgenda platform. SHOULD be unique.
     """
     result = {"status": "unknown", "msg": "Unkown status"}
     agenda_slug = agenda_slug.strip()
@@ -63,6 +65,7 @@ async def agendas_by_slug(request: Request, api_key: str = Depends(rate_limit), 
 async def agendas_details(request: Request, api_key: str = Depends(rate_limit), agenda_uid: int|None = None):
     """
     Search for OpenAgenda agendas by uid
+    - **agena_uid**: The ID of this agenda on the OpenAgenda platform.
     """
     result = {"status": "unknown", "msg": "Unkown status"}
     result = core.agendas_details(agenda_uid)
@@ -73,6 +76,7 @@ async def agendas_details(request: Request, api_key: str = Depends(rate_limit), 
 async def events_by_agenda_uid(request: Request, api_key: str = Depends(rate_limit), agenda_uid: int|None = None):
     """
     Search for OpenAgenda events by agenda uid
+    - **agenda_uid**: The ID of the agenda for which you want to retrieve the events.
     """
     result = {"status": "unknown", "msg": "Unkown status"}
     result = core.events_by_agenda_uid(agenda_uid)
@@ -83,6 +87,7 @@ async def events_by_agenda_uid(request: Request, api_key: str = Depends(rate_lim
 async def cache_query_cleanup(request: Request, api_key: str = Depends(rate_limit), force: bool = False):
     """
     Cleanup or reset query cache
+    - **force**: If specified and true, forces a full reset of the OpenAgenda queries cache.
     """
     result = openagenda_cached_query_cleanup(force)
 

@@ -31,4 +31,5 @@ log/*
 !log*/
 # Ne pas ignorer les fichiers .gitkeep pour conserver la structure
 !log/**/.gitkeep
-
+# Ne pas ignore les .json dans les docs
+!mytwip/docs/**/*.json
