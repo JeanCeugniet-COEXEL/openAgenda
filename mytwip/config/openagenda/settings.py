@@ -41,6 +41,6 @@ URL_TPL_AGENDAS_DETAILS = f"{URL_TPL_START}/[[agenda_uid]]{URL_TPL_DEFAULT_PARAM
 URL_TPL_EVENTS_BY_AGENDA_UID = f"{URL_TPL_START}/[[agenda_uid]]/events{URL_TPL_DEFAULT_PARAMS}&sort=updatedAt.desc"
 
 # CACHING PARAMETERS
-EVENTS_CACHING_DURATION = 60 # Events cached for one day
+EVENTS_CACHING_DURATION = 86400 # Events cached for one day
 AGENDAS_CACHING_DURATION = 86400*7 # Agendas for one week after their updatedAt field
-QUERIES_CACHING_DURATION = 60 # Any query to OpenAgenda platform is cached for 1 hour
+QUERIES_CACHING_DURATION = 3600 # Any query to OpenAgenda platform is cached for 1 hour

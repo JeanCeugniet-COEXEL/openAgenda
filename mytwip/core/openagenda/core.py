@@ -17,7 +17,7 @@ Core utilities for OpenAgenda API
 """
 # Query to openAgenda API
 def openagenda_query(query_url: str, data_type="items", headers: dict = {"Accept": "application/json"}) -> dict:
-    logger.info("query to platform")
+    logger.info("openagenda_query(query_url : %s)")
     result = {"status": "unknown", "msg": "Unkown status"}
     query_result_data = openagenda_cached_query_load(query_url)
     if query_result_data:
@@ -61,7 +61,6 @@ def openagenda_query(query_url: str, data_type="items", headers: dict = {"Accept
 # Handle pagination for large result sets
 def openagenda_paginate(data: dict, query_url: str, data_type: str = "items")->dict:
     logger.info(f"openagenda_paginate(agendas : {len(data.get("agendas", []))} / events : {len(data.get("events", []))}")
-    logger.info("after : %s", data.get("after", None))
     items_type = "agendas" if "agendas" in data else "events" if "events" in data else None
     page_result = None
     if (items_type is None) or ("after" not in data):
@@ -69,23 +68,14 @@ def openagenda_paginate(data: dict, query_url: str, data_type: str = "items")->d
     else:
         items = data.get(items_type)
         nb_items = data.get("total", 0)
-        logger.info("nb_items : %s", nb_items)
         nb_pages_to_query = min(nb_items // OPENAGENDA_QUERY_SIZE, OPENAGENDA_MAX_PAGES)
         if nb_items % OPENAGENDA_QUERY_SIZE > 0:
             nb_pages_to_query += 1
-        logger.info("nb_pages_to_query : %s", nb_pages_to_query)
         for page in range(2, nb_pages_to_query + 1):
-            if True:
-                """
-            if items_type == "agendas":
-                page_query_url = f"{query_url}&page={page}"
-            elif items_type== "events":
-            """
-                after = data.get("after", []) if page_result is None else page_result["data"].get("after", [])
-                if len(after) != 2:
-                    break
-                page_query_url = f"{query_url}&after[]={after[0]}&after[]={after[1]}"
-            logger.info("page_query_url : %s", page_query_url)
+            after = data.get("after", []) if page_result is None else page_result["data"].get("after", [])
+            if len(after) != 2:
+                break
+            page_query_url = f"{query_url}&after[]={after[0]}&after[]={after[1]}"
             page_result = openagenda_query(page_query_url, data_type)
             if page_result["status"] == "success":
                 items+= page_result["data"].get(items_type, [])
@@ -244,7 +234,16 @@ def agendas_details(agenda_uid: int) -> dict:
             result = query_result
 
     if agenda is not None:
-        msg = f"Found agenda for uid '{agenda_uid}'" if agenda is not None else f"Found no agenda for uid '{agenda_uid}'"
+        msg = f"Found agenda for uid '{agenda_uid}'"
+        result = {
+            "status": "success",
+            "msg": msg,
+            "data": {
+                "agenda": agenda,
+            }
+        }
+    else:
+        msg = f"Found no agenda for uid '{agenda_uid}'"
         result = {
             "status": "success",
             "msg": msg,
